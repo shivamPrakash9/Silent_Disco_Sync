@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-900 text-white font-sans">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Silent Disco Sync</title>
+    <!-- Load TailwindCSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load Lucide icons -->
+    <script src="https://unpkg.com/lucide@latest/dist/lucide.min.js"></script>
+    
+    <!-- Load Firebase (REMOVED from here) -->
+    
+    <style>
+        /* Custom font */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Custom animation */
+        @keyframes fade-in {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fade-in 0.3s ease-out forwards;
+        }
+        /* Ensure no text is shown by default */
+        .hidden {
+            display: none;
+        }
+        /* Blinking dot */
+        @keyframes blink {
+            50% { opacity: 0.2; }
+        }
+        .animate-blink {
+            animation: blink 1.5s infinite steps(1);
+        }
+    </style>
+</head>
+<body class="h-full flex items-center justify-center p-4">
+
+    <!-- Main App Container -->
+    <div class="w-full max-w-md bg-slate-800/50 rounded-3xl shadow-2xl shadow-black/30 ring-1 ring-white/10 p-6 flex flex-col gap-6 relative overflow-hidden min-h-[400px]">
+        
+        <!-- Connection Status -->
+        <div class="absolute top-4 right-5 flex items-center gap-2" id="connection-status-ui">
+            <div id="connection-dot" class="w-2.5 h-2.5 bg-gray-500 rounded-full transition-colors"></div>
+            <span id="connection-text" class="text-sm text-gray-400">Connecting...</span>
+        </div>
+
+        <!-- View: Home (Default) -->
+        <div id="view-home" class="hidden flex flex-col gap-6 animate-fade-in">
+            <div class="text-center pt-6">
+                <h1 class="text-3xl font-bold text-white mb-2">Silent Disco Sync</h1>
+                <p class="text-slate-400 text-lg">Sync music across all your devices.</p>
+            </div>
+            
+            <!-- Host Button -->
+            <button onclick="createRoom()" id="create-room-btn" class="group relative w-full py-5 px-6 bg-indigo-600 hover:bg-indigo-500 rounded-2xl transition-all duration-200 active:scale-95 shadow-lg shadow-indigo-900/50 disabled:opacity-50 disabled:cursor-not-allowed">
+                <div class="flex items-center justify-center gap-3">
+                    <i data-lucide="music-2" class="text-white"></i>
+                    <span class="text-lg font-semibold">Start a Party (Host)</span>
+                </div>
+            </button>
+
+            <!-- Join Form -->
+            <div class="flex flex-col gap-3">
+                <input type="text" id="join-code-input" placeholder="Enter 5-digit Room Code" class="w-full bg-slate-800/80 border border-slate-700 text-white text-center text-lg rounded-xl py-4 focus:outline-none focus:border-indigo-500 transition-colors placeholder-slate-500 uppercase tracking-widest" maxlength="5">
+                <button onclick="joinRoom()" id="join-room-btn" class="w-full py-5 px-6 bg-slate-800 hover:bg-slate-700 rounded-2xl transition-all duration-200 active:scale-95 border border-slate-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                    <div class="flex items-center justify-center gap-3">
+                        <i data-lucide="headphones" class="text-indigo-400"></i>
+                        <span class="text-lg font-semibold">Join Party (Listener)</span>
+                    </div>
+                </button>
+            </div>
+        </div>
+        
+        <!-- View: Setup (NEW) -->
+        <div id="view-setup" class="hidden flex-1 flex flex-col animate-fade-in">
+             <div class="text-center pt-6">
+                <i data-lucide="settings-2" class="w-12 h-12 text-amber-400 mx-auto mb-4"></i>
+                <h1 class="text-3xl font-bold text-white mb-2">One-Time Setup</h1>
+                <p class="text-slate-400 text-lg">Paste your Firebase config to connect.</p>
+            </div>
+            <textarea id="config-input" class="w-full h-40 bg-slate-900 border border-slate-700 rounded-lg p-3 my-4 text-xs font-mono focus:outline-none focus:border-indigo-500" placeholder="Paste your firebaseConfig = { ... } object here."></textarea>
+            <button onclick="saveConfig()" class="w-full py-4 px-6 bg-indigo-600 hover:bg-indigo-500 rounded-2xl transition-all duration-200 active:scale-95">
+                <span class="text-lg font-semibold">Save & Connect</span>
+            </button>
+            <p id="config-error" class="text-red-400 text-sm text-center mt-2"></p>
+        </div>
+
+        <!-- View: Host -->
+        <div id="view-host" class="hidden flex-1 flex flex-col animate-fade-in">
+            <button onclick="goHome()" class="absolute top-4 left-4 text-slate-400 hover:text-white transition-colors">
+                <i data-lucide="chevron-left" class="w-6 h-6"></i>
+            </button>
+            <div class="bg-slate-800/50 rounded-xl p-4 mb-6 mt-10 border border-white/5 text-center">
+                <p class="text-slate-400 text-sm uppercase tracking-wider font-bold">Room Code</p>
+                <p id="host-room-code" class="text-4xl font-black text-indigo-400 tracking-widest mt-1">-----</p>
+            </div>
+
+            <!-- Play/Pause Button -->
+            <button id="play-btn" onclick="togglePlay()" class="w-full h-32 bg-indigo-600 hover:bg-indigo-500 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-indigo-900/50 transition-all duration-200 active:scale-95">
+                <i id="play-icon" data-lucide="play" class="w-12 h-12"></i>
+            </button>
+            <p class="text-slate-400 text-center mt-4">Press play to sync all devices.</p>
+        </div>
+
+        <!-- View: Listener -->
+        <div id="view-listener" class="hidden flex-1 flex flex-col justify-center items-center animate-fade-in text-center p-8">
+            <button onclick="goHome()" class="absolute top-4 left-4 text-slate-400 hover:text-white transition-colors">
+                 <i data-lucide="chevron-left" class="w-6 h-6"></i>
+            </button>
+            <i data-lucide="headphones" class="w-16 h-16 text-indigo-400 mb-4"></i>
+            <h2 class="text-2xl font-bold">You're in the party!</h2>
+            <p class="text-slate-400 text-lg">Waiting for the host to start the music...</p>
+        </div>
+
+        <!-- View: Error -->
+        <div id="view-error" class="hidden flex-1 flex flex-col justify-center items-center animate-fade-in text-center p-8">
+            <i data-lucide="alert-triangle" class="w-16 h-16 text-red-400 mb-4"></i>
+            <h2 class="text-2xl font-bold">Error</h2>
+            <p id="error-message" class="text-slate-400 text-lg">Something went wrong.</p>
+            <button onclick="goHome(true)" class="mt-6 py-3 px-6 bg-slate-700 hover:bg-slate-600 rounded-xl transition-colors">Go Home</button>
+        </div>
+
+        <!-- Hidden Audio Element -->
+        <audio id="audio-player" src="https://storage.googleapis.com/gemini-qa-test-resources/disco-sync-sample.mp3" loop></audio>
+
+        <!-- Enable Audio Button (for browser policy) -->
+        <button id="enable-audio-btn" class="fixed inset-0 w-full h-full bg-black/80 flex flex-col items-center justify-center z-50 animate-fade-in" onclick="enableAudio()">
+            <i data-lucide="volume-2" class="w-16 h-16 mb-4"></i>
+            <h2 class="text-3xl font-bold">Welcome!</h2>
+            <p class="text-xl text-slate-300 mt-2">Click anywhere to enable audio</p>
+
+        </button>
+    </div>
+
+    <!-- App Logic -->
+    <script type="module">
+        // --- Firebase Imports ---
+        // MOVED HERE and CORRECTED
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- Global Variables ---
+        let currentRoomCode = null;
+        let audioContext, audioPlayer;
+        let isHost = false;
+        let db, auth, userId, appId;
+        let currentRoomUnsubscribe = null; // Function to stop listening to room
+        
+        const CONFIG_STORAGE_KEY = 'silent-disco-firebase-config';
+
+        // --- Element Cache ---
+        const els = {
+            views: {
+                home: document.getElementById('view-home'),
+                setup: document.getElementById('view-setup'), // New setup view
+                host: document.getElementById('view-host'),
+                listener: document.getElementById('view-listener'),
+                error: document.getElementById('view-error'),
+            },
+            hostCode: document.getElementById('host-room-code'),
+            joinInput: document.getElementById('join-code-input'),
+            createRoomBtn: document.getElementById('create-room-btn'),
+            joinRoomBtn: document.getElementById('join-room-btn'),
+            playBtn: document.getElementById('play-btn'),
+            playIcon: document.getElementById('play-icon'),
+            enableAudioBtn: document.getElementById('enable-audio-btn'),
+            audioPlayer: document.getElementById('audio-player'),
+            errorMessage: document.getElementById('error-message'),
+            configInput: document.getElementById('config-input'),
+            configError: document.getElementById('config-error'),
+            connection: {
+                ui: document.getElementById('connection-status-ui'),
+                dot: document.getElementById('connection-dot'),
+                text: document.getElementById('connection-text'),
+            }
+        };
+
+        // --- Initialization ---
+        function initApp() {
+            // Initialize icons
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            } else {
+                console.warn("Lucide icons script not loaded or failed to load.");
+            }
+            // Disable buttons until connected
+            els.createRoomBtn.disabled = true;
+            els.joinRoomBtn.disabled = true;
+        }
+        
+        // --- Setup & Firebase Init ---
+        
+        window.enableAudio = () => {
+            if (audioContext) return; // Already enabled
+            
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioContext.createMediaElementSource(els.audioPlayer);
+                source.connect(audioContext.destination);
+                
+                // Play and immediately pause to "prime" the audio element
+                els.audioPlayer.play().catch(err => {}); // Suppress initial play error
+                els.audioPlayer.pause();
+                
+                console.log("Audio enabled");
+                
+                // Now that audio is on, check for Firebase config
+                checkConfigAndInitFirebase();
+                
+            } catch (err) {
+                console.error("Failed to enable audio:", err);
+                // Can't show view-error yet, as icons might not be loaded
+                els.enableAudioBtn.innerHTML = `<i data-lucide="alert-triangle" class="w-16 h-16 text-red-400 mb-4"></i><h2 class="text-2xl font-bold">Audio Error</h2><p class="text-lg">Your browser does not support web audio.</p>`;
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            }
+        };
+
+        function checkConfigAndInitFirebase() {
+            try {
+                const storedConfig = localStorage.getItem(CONFIG_STORAGE_KEY);
+                if (storedConfig) {
+                    const config = JSON.parse(storedConfig);
+                    initFirebase(config);
+                } else {
+                    // No config found, show setup screen
+                    els.enableAudioBtn.style.display = 'none'; // Hide audio button
+                    showView('setup');
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                }
+            } catch (err) {
+                console.error("Error loading config:", err);
+                localStorage.removeItem(CONFIG_STORAGE_KEY); // Clear bad config
+                showView('setup');
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            }
+        }
+        
+        window.saveConfig = () => {
+            let configStr = els.configInput.value;
+            els.configError.textContent = '';
+            
+            try {
+                // --- Robust Config Parsing ---
+                
+                // 1. Find the first '{'
+                const firstBrace = configStr.indexOf('{');
+                if (firstBrace === -1) throw new Error("Could not find the start '{' of the config object. Please paste the *entire* snippet from Firebase.");
+                
+                // 2. Find the last '}'
+                const lastBrace = configStr.lastIndexOf('}');
+                if (lastBrace === -1) throw new Error("Could not find the end '}' of the config object. Please paste the *entire* snippet from Firebase.");
+                
+                // 3. Extract the object string
+                configStr = configStr.substring(firstBrace, lastBrace + 1);
+                
+                // 4. Remove invisible non-breaking spaces (like the one in your paste)
+                configStr = configStr.replace(/\u00A0/g, ''); 
+                
+                // 5. Attempt to parse using REGEX (not JSON.parse)
+                // because the config is a JS object, not JSON (keys aren't quoted).
+                const config = {};
+                // This regex finds pairs like `key: "value"`
+                const regex = /([\w_]+)\s*:\s*"([^"]+)"/g;
+                let match;
+                
+                while ((match = regex.exec(configStr)) !== null) {
+                    config[match[1]] = match[2];
+                }
+
+                // Basic validation
+                if (!config.apiKey || !config.projectId || !config.authDomain) {
+                    console.error("Parsed config object:", config); // Log what was parsed
+                    throw new Error("Config is missing required keys (apiKey, projectId, authDomain). Check paste.");
+                }
+                
+                // Save and reload (as JSON this time, since our 'config' object is valid)
+                localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(config));
+                
+                // --- FIX ---
+                // DO NOT RELOAD. Instead, just initialize firebase now.
+                // window.location.reload(); 
+                
+                // Audio context should already be enabled from the first click,
+                // so now we just need to initialize firebase.
+                checkConfigAndInitFirebase();
+                
+            } catch (err) {
+                console.error("Failed to parse config:", err);
+                els.configError.textContent = `Invalid config: ${err.message}. Please paste the full snippet from Firebase.`;
+            }
+        };
+
+        function initFirebase(firebaseConfig) {
+            try {
+                // Use a generic app ID for paths
+                appId = firebaseConfig.projectId || 'default-app-id';
+                
+                const app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+                
+                // Enable debug logging (REMOVED due to import error)
+                // setLogLevel('Debug'); 
+                
+                // Sign in
+                signInAnonymously(auth).catch(err => {
+                    console.error("Anonymous sign-in failed:", err);
+                    setConnectionStatus('error', "Auth failed. Check setup.");
+                    const errorMsg = err.message || '';
+                    if (errorMsg.includes("auth/operation-not-allowed") || errorMsg.includes("auth/admin-restricted-operation")) {
+                         showError("Authentication Error: Please make sure 'Anonymous' sign-in is ENABLED in your Firebase project's Authentication settings.");
+                    } else {
+                         showError(`Authentication Error: ${err.message}`);
+                    }
+                });
+                
+                // Listen for auth state changes
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        console.log(`Firebase: Signed in as ${userId}`);
+                        setConnectionStatus('connected', "Connected");
+                        els.enableAudioBtn.style.display = 'none'; // Hide audio button
+                        els.createRoomBtn.disabled = false; // Enable buttons
+                        els.joinRoomBtn.disabled = false;
+                        showView('home');
+                    } else {
+                        console.warn("Firebase: User is signed out.");
+                        setConnectionStatus('error', "Not Authenticated");
+                        els.createRoomBtn.disabled = true;
+                        els.joinRoomBtn.disabled = true;
+                    }
+                });
+
+            } catch (err) {
+                console.error("Firebase initialization failed:", err);
+                setConnectionStatus('error', "Firebase Init Failed");
+                showError(`Firebase Init Failed: ${err.message}. Please check your config.`);
+            }
+        }
+        
+        // --- Firestore Path Helpers ---
+        function getCollectionRef() {
+            // Public data path
+            return `artifacts/${appId}/public/data/disco-rooms`;
+        }
+        
+        function getDocPath(code) {
+             return `${getCollectionRef()}/${code}`;
+        }
+
+        // --- Host Functions ---
+        window.createRoom = async () => {
+            if (!db) return showError("Not connected to server.");
+            isHost = true;
+            currentRoomCode = generateRoomCode();
+            els.hostCode.textContent = currentRoomCode;
+            
+            const initialState = {
+                isPlaying: false,
+                lastSyncTime: null, // Will be set on first play
+                createdAt: serverTimestamp(),
+                hostId: userId
+            };
+            
+            try {
+                const roomDocRef = doc(db, getDocPath(currentRoomCode));
+                await setDoc(roomDocRef, initialState);
+                
+                console.log(`Host: Created room ${currentRoomCode}`);
+                listenToRoom(currentRoomCode);
+                showView('host');
+            } catch (err) {
+                console.error("Error creating room:", err);
+                showError("Failed to create party room on server.");
+            }
+        };
+
+        window.togglePlay = async () => {
+            if (!isHost || !currentRoomCode || !db || !audioContext) return;
+            
+            try {
+                const roomDocRef = doc(db, getDocPath(currentRoomCode));
+                const docSnap = await getDoc(roomDocRef);
+                
+                if (!docSnap.exists()) {
+                    return showError("Room no longer exists.");
+                }
+                
+                const roomData = docSnap.data();
+                const newIsPlaying = !roomData.isPlaying;
+                
+                // --- FIX: Optimistic UI for Host ---
+                // Update the host's UI *immediately* for a better experience.
+                // The onSnapshot listener (which now ignores pending writes)
+                // will take over and sync the audio once the server confirms.
+                if (newIsPlaying) {
+                    // We are turning the music ON
+                    els.playIcon.setAttribute('data-lucide', 'pause');
+                } else {
+                    // We are turning the music OFF
+                    els.audioPlayer.pause();
+                    els.playIcon.setAttribute('data-lucide', 'play');
+                }
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+                // --- End Optimistic UI Fix ---
+                
+                // We store the current server time on 'play'
+                // We store 'null' on 'pause'
+                const newSyncTime = newIsPlaying ? serverTimestamp() : null;
+                
+                await updateDoc(roomDocRef, {
+                    isPlaying: newIsPlaying,
+                    lastSyncTime: newSyncTime
+                });
+                
+                // The onSnapshot listener will handle the UI update
+                console.log(`Host: Toggled play to ${newIsPlaying}`);
+
+            } catch (err) {
+                console.error("Error toggling play:", err);
+            }
+        };
+        
+        // --- Listener Functions ---
+        window.joinRoom = async () => {
+            if (!db) return showError("Not connected to server.");
+            isHost = false;
+            const code = els.joinInput.value.toUpperCase();
+            if (code.length !== 5) {
+                console.warn("Code must be 5 digits.");
+                els.joinInput.classList.add('border-red-500');
+                setTimeout(() => els.joinInput.classList.remove('border-red-500'), 1000);
+                return;
+            }
+            
+            try {
+                const roomDocRef = doc(db, getDocPath(code));
+                const docSnap = await getDoc(roomDocRef);
+
+                if (docSnap.exists()) {
+                    console.log(`Listener: Joined room ${code}`);
+                    currentRoomCode = code;
+                    
+                    // Listen for changes
+                    listenToRoom(currentRoomCode);
+                    showView('listener');
+                } else {
+                    showError("Party room not found.");
+                }
+            } catch (err) {
+                console.error("Error joining room:", err);
+                showError("Could not find that room.");
+            }
+        };
+
+        // --- Realtime Sync (via Firestore) ---
+        function listenToRoom(code) {
+            // Stop listening to any old room
+            if (currentRoomUnsubscribe) {
+                currentRoomUnsubscribe();
+            }
+            
+            const roomKey = getDocPath(code);
+            console.log(`Subscribing to room: ${roomKey}`);
+            
+            currentRoomUnsubscribe = onSnapshot(doc(db, roomKey), (doc) => {
+                // --- FIX: Ignore local-only changes ---
+                // This prevents a bug where the app gets a "true" isPlaying
+                // but a "null" lastSyncTime, causing it to fail.
+                // We only want to react to the confirmed server state.
+                if (doc.metadata.hasPendingWrites) {
+                    console.log("Sync: Ignoring local-only write, waiting for server ack.");
+                    return;
+                }
+                
+                if (doc.exists()) {
+                    const data = doc.data();
+                    console.log("Sync: Received data", data);
+                    updatePlayerState(data.isPlaying, data.lastSyncTime);
+                } else {
+                    // Document was deleted
+                    showError("The party was ended by the host.");
+                }
+            }, (err) => {
+                console.error("Snapshot listener error:", err);
+                showError("Lost connection to party room.");
+            });
+        }
+
+        // --- Audio & UI Logic ---
+        function updatePlayerState(isPlaying, lastSyncTimestamp) {
+            if (!audioContext) return; // Audio not yet enabled
+
+            if (isPlaying && lastSyncTimestamp) {
+                // lastSyncTimestamp is a Firestore Timestamp object
+                // Convert it to milliseconds, then find the diff in seconds
+                const syncTimeMs = lastSyncTimestamp.toMillis();
+                const nowMs = new Date().getTime();
+                const timeSinceSyncSec = (nowMs - syncTimeMs) / 1000.0;
+                
+                // --- FIX for non-finite error ---
+                // We must check if audio duration is loaded and is a valid number
+                // before trying to use it in a calculation.
+                const duration = els.audioPlayer.duration;
+                if (isFinite(duration) && duration > 0) {
+                    els.audioPlayer.currentTime = timeSinceSyncSec % duration;
+                } else {
+                    // Duration isn't ready yet.
+                    // We can't sync perfectly, but we can play.
+                    // This will likely be corrected on a subsequent update
+                    // once the audio metadata is loaded.
+                    console.warn("Audio duration not available. Sync may be imperfect.");
+                }
+                
+                els.audioPlayer.play().catch(err => console.warn("Play interrupted:", err));
+                els.playIcon.setAttribute('data-lucide', 'pause');
+            } else {
+                els.audioPlayer.pause();
+                els.playIcon.setAttribute('data-lucide', 'play');
+            }
+            
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            } else {
+                console.warn("Lucide not loaded, could not update icons.");
+            }
+        }
+
+        function showView(viewName) {
+            Object.values(els.views).forEach(view => view.classList.add('hidden'));
+            if (els.views[viewName]) {
+                els.views[viewName].classList.remove('hidden');
+            } else {
+                // Fallback to home if view is unknown
+                els.views.home.classList.remove('hidden');
+            }
+        }
+        
+        window.goHome = (isError = false) => {
+            if (currentRoomUnsubscribe) {
+                currentRoomUnsubscribe(); // Stop listening
+                currentRoomUnsubscribe = null;
+            }
+            currentRoomCode = null;
+            isHost = false;
+            
+            // If we're coming from an error, refresh to be safe
+            if (isError) {
+                window.location.reload();
+            } else {
+                 showView('home');
+            }
+        };
+
+        function showError(message) {
+            console.error(message);
+            
+            // Stop listening to room
+            if (currentRoomUnsubscribe) {
+                currentRoomUnsubscribe();
+                currentRoomUnsubscribe = null;
+            }
+            currentRoomCode = null;
+            isHost = false;
+            
+            els.errorMessage.textContent = message;
+            showView('error');
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+        
+        function setConnectionStatus(status, text) {
+            els.connection.text.textContent = text;
+            els.connection.dot.classList.remove('bg-gray-500', 'bg-green-500', 'bg-red-500', 'animate-blink');
+            
+            if (status === 'connected') {
+                els.connection.dot.classList.add('bg-green-500');
+            } else if (status === 'error') {
+                els.connection.dot.classList.add('bg-red-500');
+            } else { // connecting
+                els.connection.dot.classList.add('bg-gray-500', 'animate-blink');
+            }
+        }
+
+        // --- Utilities ---
+        function generateRoomCode() {
+            // 5 digits to reduce collision chance
+            return Math.floor(10000 + Math.random() * 90000).toString();
+        }
+
+        // --- Start App ---
+        // Wait for the window (and external scripts like lucide) to load
+        // REPLACED old broken listener with a simple, correct one.
+        window.addEventListener('load', initApp);
+        
+        // Expose functions to global window object
+        window.joinRoom = joinRoom;
+        window.createRoom = createRoom;
+        window.togglePlay = togglePlay;
+        window.saveConfig = saveConfig;
+        window.goHome = goHome;
+        // enableAudio is already exposed via onclick
+
+    </script>
+</body>
+</html>
